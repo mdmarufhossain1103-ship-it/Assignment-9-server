@@ -47,7 +47,7 @@ async function run() {
             try{
                 const email = req.query.email;
                 if (email){
-                    const query = {userEmail: email};
+                    const query = {email: email};
                     const result = await ideasCollection.find(query).toArray();
                     return res.send(result);
                 }
@@ -93,6 +93,59 @@ async function run() {
                 res.send(result);
 
             } catch (error) {
+                res.status(500).send({
+                    error: error.message
+                });
+            }
+        });
+
+        app.patch('/ideas/:id', async(req,res) =>{
+            try{
+                const id = req.params.id;
+                const updatedIdea = req.body;
+
+                if(!ObjectId.isValid(id)){
+                    return res.status(400).send({
+                        error: "Invalid ID"
+                    });
+                }
+
+                const filter = {
+                    _id: new ObjectId(id)
+                };
+                const updatedDoc = {
+                    $set: updatedIdea
+                };
+
+                const result = await ideasCollection.updateOne(
+                    filter,
+                    updatedDoc
+                );
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({
+                    error: error.message
+                });
+            }
+        });
+
+
+        app.delete('/ideas/:id', async(req,res) =>{
+            try {
+                const id =req.params.id;
+
+                if(!ObjectId.isValid(id)){
+                    return res.status(400).send({
+                        error: 'Invalid ID'
+                    });
+                }
+
+                const result =await ideasCollection.deleteOne({
+                    _id: new ObjectId(id)
+                });
+
+                res.send(result);
+            } catch(error){
                 res.status(500).send({
                     error: error.message
                 });
