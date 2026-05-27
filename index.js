@@ -28,13 +28,14 @@ async function run() {
 
         const db = client.db('ideavault');
 
-        const userCollection = db.collection('idea');
+        const oldIdeaDataCollection = db.collection('idea');
+        const userCollection = db.collection('user');
         const ideasCollection = db.collection('ideas');
         const commentCollection = db.collection('comments');
 
         app.get('/users', async (req, res) => {
             try {
-                const result = await userCollection.find().toArray();
+                const result = await oldIdeaDataCollection.find().toArray();
                 res.send(result);
             } catch (error) {
                 res.status(500).send({
@@ -43,17 +44,47 @@ async function run() {
             }
         });
 
+
+
         app.get('/ideas', async(req,res) =>{
             try{
-                const email = req.query.email;
-                if (email){
-                    const query = {email: email};
-                    const result = await ideasCollection.find(query).toArray();
-                    return res.send(result);
+               const {email,search,category,startDate,endDate}= req.query;
+
+               let query = {};
+
+               if(email){
+                query.email = email;
+               }
+
+               if(search) {
+                query.ideaTitle = {
+                    $regex: search,
+                    $options: "i"
+                };
+               }
+
+               if (category && category.trim() !== "") {
+                query.category = category;
+               }
+
+               if ((startDate && startDate.trim() !== "") || (endDate && endDate.trim() !== "")) {
+                query.createdAt = {};
+
+                if(startDate && startDate.trim() !== ""){
+                    query.createdAt.$gte = new Date(startDate);
                 }
-            } catch(error){
+                if(endDate && endDate.trim() !== "") {
+                    const end = new Date(endDate);
+                    end.setHours(23,59,59,999);
+                    query.createdAt.$lte = end;
+                }
+               }
+
+               const result = await ideasCollection.find(query).sort({createdAt: -1}).toArray();
+               res.send(result);
+            } catch (error){
                 res.status(500).send({
-                    error:error.message
+                    error: error.message
                 });
             }
         });
@@ -70,7 +101,7 @@ async function run() {
                     });
                 }
 
-                const result = await userCollection.findOne({
+                const result = await oldIdeaDataCollection.findOne({
                     _id: new ObjectId(id)
                 });
 
@@ -86,15 +117,51 @@ async function run() {
         app.post('/ideas', async (req, res) => {
             try {
 
-                const newUser = req.body;
+                const email = req.body.email;
 
-                const result = await ideasCollection.insertOne(newUser);
+                if(!email){
+                    return res.status(400).send({error: "Email is required to post an idea."})
+                }
 
-                res.send(result);
+                const newIdea = {
+                    ...req.body,
+                    createdAt: new Date()
+                };
+
+                const ideaResult = await ideasCollection.insertOne(newIdea);
+
+                // if (ideaResult.insertedId){
+                //     await userCollection.insertOne({
+                //         ...newIdea,
+                //     })
+                // }
+
+                res.status(201).send(ideaResult);
 
             } catch (error) {
                 res.status(500).send({
                     error: error.message
+                });
+            }
+        });
+
+       
+
+
+        app.patch("/users/:email", async(req,res) =>{
+            try {
+                const email = req.params.email;
+                const updatedData = req.body;
+
+                const result = await userCollection.updateOne(
+                   {email: email},
+                   {$set: updatedData},
+                   {upsert: true}
+                );
+                res.send(result);
+            } catch (error){
+                res.status(500).send({
+                    error: error.message,
                 });
             }
         });
@@ -187,12 +254,31 @@ async function run() {
             }
         });
 
+        app.get('/comments', async(req,res) =>{
+            try{
+                const email = req.query.email;
+
+                if(!email){
+                    return res.status(400).send({
+                        error: 'Email is required'
+                    });
+                }
+                const comments = await commentCollection.find({email: email}).sort({createdAt: -1}).toArray();
+                res.send(comments);
+            }
+            catch (error) {
+                res.status(500).send({
+                    error: error.message
+                });
+            }
+        })
+
         app.post('/comments', async (req, res) => {
             try {
 
-                const { ideaId, userName, text } = req.body;
+                const { ideaId, userName, text,email } = req.body;
 
-                if (!ideaId || !userName || !text) {
+                if (!ideaId || !userName || !text || !email) {
                     return res.status(400).send({
                         error: 'Missing required fields'
                     });
@@ -202,6 +288,7 @@ async function run() {
                     ideaId,
                     userName,
                     text,
+                    email,
                     createdAt: new Date(),
                     isEdited: false
                 };
