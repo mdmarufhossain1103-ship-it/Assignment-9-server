@@ -90,7 +90,7 @@ async function run() {
         });
 
 
-        app.get('/users/:id', async (req, res) => {
+        app.get('/users/:id',async (req, res) => {
             try {
 
                 const id = req.params.id;
